@@ -14,6 +14,7 @@ const socket = io.connect("http://localhost:5000");
 function App() {
   const [isAuth, setIsAuth] = useState(false);
   const [username, setUsername] = useState("");
+  const [roomID, setRoomID] = useState("");
   const [stream, setStream] = useState(null);
   const [micActive, setMicActive] = useState(true);
   const [cameraActive, setCameraActive] = useState(true);
@@ -121,6 +122,15 @@ function App() {
   const endCall = () => window.location.reload();
 
   if (!isAuth) return <Auth setUsername={setUsername} setIsAuth={setIsAuth} />;
+  if (!isAuth) {
+    return (
+      <Auth 
+        setUsername={setUsername} 
+        setRoomID={setRoomID} 
+        setIsAuth={setIsAuth} 
+      />
+    );
+  }
 
   return (
     <div className="min-h-screen bg-[#0b0e14] text-slate-200 flex flex-col">
