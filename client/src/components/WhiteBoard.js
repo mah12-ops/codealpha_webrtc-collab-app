@@ -2,30 +2,103 @@ import React, { useEffect, useRef } from "react";
 
 const Whiteboard = ({ socket }) => {
   const canvasRef = useRef();
+  const containerRef = useRef();
 
   useEffect(() => {
-    socket.on("drawing", (data) => draw(data.x, data.y, false));
+    const canvas = canvasRef.current;
+    
+    // 1. Make Canvas Responsive
+    const resizeCanvas = () => {
+      const container = containerRef.current;
+      // We save the drawing content before resizing
+      const tempImage = canvas.toDataURL();
+      canvas.width = container.offsetWidth;
+      canvas.height = 400; // Fixed height, responsive width
+      
+      // Restore drawing after resize
+      const ctx = canvas.getContext("2d");
+      const img = new Image();
+      img.src = tempImage;
+      img.onload = () => ctx.drawImage(img, 0, 0);
+    };
+
+    window.addEventListener("resize", resizeCanvas);
+    resizeCanvas(); // Initial call
+
+    // 2. Listen for Remote Drawing
+    socket.on("drawing", (data) => {
+      drawRemote(data.x, data.y, data.isNewPath);
+    });
+
+    return () => window.removeEventListener("resize", resizeCanvas);
   }, [socket]);
 
-  const draw = (x, y, emit) => {
+  // Logic for drawing from the other person
+  const drawRemote = (x, y, isNewPath) => {
     const ctx = canvasRef.current.getContext("2d");
-    ctx.lineWidth = 3; ctx.lineCap = "round"; ctx.strokeStyle = "#6366f1";
-    ctx.lineTo(x, y); ctx.stroke();
-    if (emit) socket.emit("drawing", { x, y });
+    ctx.lineWidth = 3;
+    ctx.lineCap = "round";
+    ctx.strokeStyle = "#6366f1";
+    if (isNewPath) ctx.beginPath();
+    ctx.lineTo(x, y);
+    ctx.stroke();
+  };
+
+  const startDrawing = (e) => {
+    const ctx = canvasRef.current.getContext("2d");
+    ctx.beginPath();
+    const { offsetX, offsetY } = e.nativeEvent;
+    ctx.moveTo(offsetX, offsetY);
+    // Tell others we started a new line
+    socket.emit("drawing", { x: offsetX, y: offsetY, isNewPath: true });
+  };
+
+  const draw = (e) => {
+    if (e.buttons !== 1) return;
+    const ctx = canvasRef.current.getContext("2d");
+    const { offsetX, offsetY } = e.nativeEvent;
+    
+    ctx.lineWidth = 3;
+    ctx.lineCap = "round";
+    ctx.strokeStyle = "#6366f1";
+    ctx.lineTo(offsetX, offsetY);
+    ctx.stroke();
+    
+    socket.emit("drawing", { x: offsetX, y: offsetY, isNewPath: false });
+  };
+
+  const clearCanvas = () => {
+    const canvas = canvasRef.current;
+    const ctx = canvas.getContext("2d");
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
   };
 
   return (
-    <div className="bg-[#1e293b] rounded-2xl p-4 border border-slate-700 mt-6">
-      <h3 className="text-sm font-semibold text-slate-400 mb-3 uppercase">Collaborative Canvas</h3>
+    <div ref={containerRef} className="bg-[#1e293b] rounded-3xl p-6 border border-slate-800 shadow-xl transition-all">
+      <div className="flex justify-between items-center mb-4">
+        <div className="flex items-center gap-3">
+          <div className="p-2 bg-indigo-500/20 rounded-lg">🎨</div>
+          <h3 className="text-sm font-bold text-slate-300 uppercase tracking-widest">Live Collaboration</h3>
+        </div>
+        <button 
+          onClick={clearCanvas}
+          className="text-xs bg-slate-800 hover:bg-slate-700 text-slate-400 px-3 py-1.5 rounded-md border border-slate-700 transition"
+        >
+          Clear Board
+        </button>
+      </div>
+
       <canvas 
-        ref={canvasRef} width={800} height={400} 
-        onMouseDown={(e) => {
-          canvasRef.current.getContext("2d").beginPath();
-          canvasRef.current.getContext("2d").moveTo(e.nativeEvent.offsetX, e.nativeEvent.offsetY);
-        }}
-        onMouseMove={(e) => e.buttons === 1 && draw(e.nativeEvent.offsetX, e.nativeEvent.offsetY, true)}
-        className="w-full h-[300px] bg-white rounded-xl cursor-crosshair"
+        ref={canvasRef} 
+        onMouseDown={startDrawing}
+        onMouseMove={draw}
+        className="w-full h-[400px] bg-white rounded-2xl cursor-crosshair shadow-inner ring-4 ring-slate-800/50"
       />
+      
+      <div className="mt-4 flex gap-4 text-[10px] text-slate-500 font-medium">
+        <span className="flex items-center gap-1">● Blue Pencil Active</span>
+        <span className="flex items-center gap-1">● Multi-user Sync On</span>
+      </div>
     </div>
   );
 };
