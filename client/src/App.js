@@ -7,6 +7,8 @@ import Whiteboard from "./components/WhiteBoard";
 import FileShare from "./components/FileShare";
 import Controls from "./components/Controls";
 
+// Dynamic Room ID (You can change this to a dynamic state later)
+const ROOM_ID = "main-room";
 const socket = io.connect("http://localhost:5000");
 
 function App() {
@@ -16,49 +18,79 @@ function App() {
   const [micActive, setMicActive] = useState(true);
   const [cameraActive, setCameraActive] = useState(true);
   
+  // --- MESH NETWORK STATES ---
+  const [peers, setPeers] = useState([]); // Array of peer objects for rendering
   const userVideo = useRef();
-  const partnerVideo = useRef();
-  const peerRef = useRef();
-
-  // --- 1. Define Functions FIRST to avoid ESLint Errors ---
-
-  const initiateCall = (targetId, currentStream) => {
-    const peer = new Peer({ initiator: true, trickle: false, stream: currentStream });
-    peer.on("signal", (signal) => socket.emit("offer", { target: targetId, signal }));
-    peer.on("stream", (s) => { if (partnerVideo.current) partnerVideo.current.srcObject = s; });
-    peerRef.current = peer;
-  };
-
-  const prepareToReceiveCall = (callerId, currentStream) => {
-    const peer = new Peer({ initiator: false, trickle: false, stream: currentStream });
-    peer.on("signal", (signal) => socket.emit("answer", { target: callerId, signal }));
-    peer.on("stream", (s) => { if (partnerVideo.current) partnerVideo.current.srcObject = s; });
-    peerRef.current = peer;
-  };
-
-  // --- 2. The UseEffect Hook ---
+  const peersRef = useRef([]); // Ref to keep track of peers for signaling
 
   useEffect(() => {
     if (!isAuth) return;
 
-    navigator.mediaDevices.getUserMedia({ video: true, audio: true }).then((s) => {
-      setStream(s);
-      if (userVideo.current) userVideo.current.srcObject = s;
+    // 1. Get Media First
+    navigator.mediaDevices.getUserMedia({ video: true, audio: true }).then((currentStream) => {
+      setStream(currentStream);
+      if (userVideo.current) userVideo.current.srcObject = currentStream;
 
-      // Join room ONLY after camera is ready
-      socket.emit("join-room", "main-room");
+      // 2. Tell Server we are joining
+      socket.emit("join-room", { roomID: ROOM_ID, username });
 
-      socket.on("other-user", (userId) => initiateCall(userId, s));
-      socket.on("user-joined", (userId) => prepareToReceiveCall(userId, s));
+      // 3. Receive list of users already in the room
+      socket.on("all-users", (users) => {
+        const peers = [];
+        users.forEach((userID) => {
+          const peer = createPeer(userID, socket.id, currentStream);
+          peersRef.current.push({ peerID: userID, peer });
+          peers.push({ peerID: userID, peer });
+        });
+        setPeers(peers);
+      });
+
+      // 4. Handle a new user joining the room
+      socket.on("user-joined", (payload) => {
+        const peer = addPeer(payload.signal, payload.callerID, currentStream);
+        peersRef.current.push({ peerID: payload.callerID, peer });
+        setPeers((prev) => [...prev, { peerID: payload.callerID, peer }]);
+      });
+
+      // 5. Complete the handshake
+      socket.on("receiving-returned-signal", (payload) => {
+        const item = peersRef.current.find((p) => p.peerID === payload.id);
+        if (item) item.peer.signal(payload.signal);
+      });
+
+      // 6. Handle user leaving
+      socket.on("user-left", (id) => {
+        const peerObj = peersRef.current.find(p => p.peerID === id);
+        if (peerObj) peerObj.peer.destroy();
+        const remainingPeers = peersRef.current.filter(p => p.peerID !== id);
+        peersRef.current = remainingPeers;
+        setPeers(remainingPeers);
+      });
     });
 
-    socket.on("offer", (data) => peerRef.current?.signal(data.signal));
-    socket.on("answer", (data) => peerRef.current?.signal(data.signal));
-
-    return () => socket.off(); // Cleanup
+    return () => socket.off();
   }, [isAuth]);
 
-  // --- 3. Feature Logic ---
+  // --- MESH HELPER FUNCTIONS ---
+
+  function createPeer(userToSignal, callerID, stream) {
+    const peer = new Peer({ initiator: true, trickle: false, stream });
+    peer.on("signal", (signal) => {
+      socket.emit("sending-signal", { userToSignal, callerID, signal });
+    });
+    return peer;
+  }
+
+  function addPeer(incomingSignal, callerID, stream) {
+    const peer = new Peer({ initiator: false, trickle: false, stream });
+    peer.on("signal", (signal) => {
+      socket.emit("returning-signal", { signal, callerID });
+    });
+    peer.signal(incomingSignal);
+    return peer;
+  }
+
+  // --- CONTROLS ---
 
   const toggleMic = () => {
     stream.getAudioTracks()[0].enabled = !micActive;
@@ -73,10 +105,14 @@ function App() {
   const shareScreen = () => {
     navigator.mediaDevices.getDisplayMedia({ cursor: true }).then((screenStream) => {
       const screenTrack = screenStream.getTracks()[0];
-      peerRef.current.replaceTrack(stream.getVideoTracks()[0], screenTrack, stream);
+      peersRef.current.forEach(({ peer }) => {
+        peer.replaceTrack(stream.getVideoTracks()[0], screenTrack, stream);
+      });
       userVideo.current.srcObject = screenStream;
       screenTrack.onended = () => {
-        peerRef.current.replaceTrack(screenTrack, stream.getVideoTracks()[0], stream);
+        peersRef.current.forEach(({ peer }) => {
+          peer.replaceTrack(screenTrack, stream.getVideoTracks()[0], stream);
+        });
         userVideo.current.srcObject = stream;
       };
     });
@@ -90,7 +126,7 @@ function App() {
     <div className="min-h-screen bg-[#0b0e14] text-slate-200 flex flex-col">
       <nav className="h-16 border-b border-slate-800 flex items-center justify-between px-8 bg-[#0b0e14]/80 backdrop-blur-md z-10">
         <div className="flex items-center gap-2">
-          <div className="w-8 h-8 bg-indigo-600 rounded-lg flex items-center justify-center font-bold text-white">N</div>
+          <div className="w-8 h-8 bg-indigo-600 rounded-lg flex items-center justify-center font-bold text-white shadow-lg shadow-indigo-500/20">N</div>
           <span className="font-bold tracking-tight">NEXUS <span className="text-indigo-500 text-xs font-black">PRO</span></span>
         </div>
       </nav>
@@ -99,15 +135,13 @@ function App() {
         <div className="col-span-12 lg:col-span-9 flex flex-col gap-6">
           <VideoGrid 
             userVideo={userVideo} 
-            partnerVideo={partnerVideo} 
+            peers={peers} // Passing the array of peers
             username={username} 
-            micActive={micActive} 
-            cameraActive={cameraActive} 
           />
-          <Whiteboard socket={socket} />
+          <Whiteboard socket={socket} roomId={ROOM_ID} />
         </div>
         <div className="col-span-12 lg:col-span-3">
-          <FileShare peer={peerRef.current} />
+          <FileShare peers={peers} />
         </div>
       </main>
 
