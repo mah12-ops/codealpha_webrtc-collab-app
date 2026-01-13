@@ -1,38 +1,55 @@
 import React, { useState } from "react";
 
-const Auth = ({ setUsername, setIsAuth }) => {
-  const [input, setInput] = useState("");
+const Auth = ({ setUsername, setRoomID, setIsAuth }) => {
+  const [nameInput, setNameInput] = useState("");
+  const [roomInput, setRoomInput] = useState("");
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    if (input.trim()) {
-      setUsername(input);
+    if (nameInput.trim() && roomInput.trim()) {
+      setUsername(nameInput);
+      setRoomID(roomInput); // Set the room to join in MariaDB
       setIsAuth(true);
     }
   };
 
   return (
-    <div className="flex h-screen items-center justify-center bg-[#0f172a]">
-      <div className="w-full max-w-md p-8 bg-[#1e293b] rounded-3xl shadow-2xl border border-slate-800">
-        <div className="text-center mb-8">
-          <div className="inline-block p-3 bg-indigo-500/10 rounded-2xl mb-4">
-            <svg className="w-8 h-8 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 00-2 2z" />
+    <div className="flex h-screen items-center justify-center bg-[#0b0e14]">
+      <div className="w-full max-w-md p-10 bg-[#161b22] rounded-[2rem] shadow-2xl border border-slate-800/50">
+        <div className="text-center mb-10">
+          <div className="inline-flex p-4 bg-indigo-500/10 rounded-3xl mb-4 border border-indigo-500/20">
+            <svg className="w-10 h-10 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
             </svg>
           </div>
-          <h2 className="text-3xl font-bold text-white">Welcome Back</h2>
-          <p className="text-slate-400 mt-2">Enter your name to start the session</p>
+          <h2 className="text-3xl font-black text-white tracking-tight">NEXUS COLLAB</h2>
+          <p className="text-slate-500 mt-2 text-sm font-medium">Connect with your team instantly.</p>
         </div>
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <input
-            autoFocus
-            className="w-full p-4 rounded-xl bg-slate-900 border border-slate-700 text-white focus:ring-2 focus:ring-indigo-500 outline-none transition"
-            placeholder="Your Name"
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-          />
-          <button className="w-full bg-indigo-600 hover:bg-indigo-500 text-white py-4 rounded-xl font-bold text-lg transition-all transform hover:scale-[1.02]">
-            Join Meeting
+
+        <form onSubmit={handleSubmit} className="space-y-5">
+          <div>
+            <label className="text-xs font-bold text-slate-500 uppercase ml-1 mb-2 block tracking-widest">Display Name</label>
+            <input
+              autoFocus
+              className="w-full p-4 rounded-2xl bg-slate-900/50 border border-slate-800 text-white focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 outline-none transition-all placeholder:text-slate-700"
+              placeholder="e.g. John Doe"
+              value={nameInput}
+              onChange={(e) => setNameInput(e.target.value)}
+            />
+          </div>
+
+          <div>
+            <label className="text-xs font-bold text-slate-500 uppercase ml-1 mb-2 block tracking-widest">Room Name</label>
+            <input
+              className="w-full p-4 rounded-2xl bg-slate-900/50 border border-slate-800 text-white focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 outline-none transition-all placeholder:text-slate-700"
+              placeholder="e.g. design-team"
+              value={roomInput}
+              onChange={(e) => setRoomInput(e.target.value)}
+            />
+          </div>
+
+          <button className="w-full bg-indigo-600 hover:bg-indigo-500 text-white py-4 rounded-2xl font-bold text-lg transition-all shadow-lg shadow-indigo-600/20 active:scale-95">
+            Enter Meeting
           </button>
         </form>
       </div>
