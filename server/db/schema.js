@@ -1,16 +1,11 @@
-import { mysqlTable, serial, varchar, text, boolean, timestamp, int } from 'drizzle-orm/mysql-core';
+const { mysqlTable, serial, varchar, text, timestamp } = require('drizzle-orm/mysql-core');
 
-export const users = mysqlTable('users', {
-  id: serial('id').primaryKey(),
-  username: varchar('username', { length: 255 }).notNull(),
-  password: text('password').notNull(),
-});
-
-export const rooms = mysqlTable('rooms', {
+const rooms = mysqlTable('rooms', {
   id: serial('id').primaryKey(),
   roomId: varchar('room_id', { length: 255 }).unique().notNull(),
-  adminId: int('admin_id').references(() => users.id),
-  whiteboardData: text('whiteboard_data'), // Stores JSON of canvas
-  isLocked: boolean('is_locked').default(false),
+  adminId: varchar('admin_id', { length: 255 }), // socket.id of the creator
+  whiteboardData: text('whiteboard_data'), // Stores the canvas state
   createdAt: timestamp('created_at').defaultNow(),
 });
+
+module.exports = { rooms };
