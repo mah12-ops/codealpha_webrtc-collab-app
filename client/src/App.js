@@ -3,7 +3,7 @@ import io from "socket.io-client";
 import Peer from "simple-peer";
 import Auth from "./components/Auth";
 import VideoGrid from "./components/VideoGrid";
-import Whiteboard from "./components/Whiteboard";
+import Whiteboard from "./components/WhiteBoard";
 import FileShare from "./components/FileShare";
 import Controls from "./components/Controls"; // New Component
 
