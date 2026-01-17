@@ -121,7 +121,7 @@ function App() {
 
   const endCall = () => window.location.reload();
 
-  if (!isAuth) return <Auth setUsername={setUsername} setIsAuth={setIsAuth} />;
+  
   if (!isAuth) {
     return (
       <Auth 
