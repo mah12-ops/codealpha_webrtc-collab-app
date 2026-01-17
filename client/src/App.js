@@ -7,35 +7,35 @@ import Whiteboard from "./components/WhiteBoard";
 import FileShare from "./components/FileShare";
 import Controls from "./components/Controls";
 
-// Dynamic Room ID (You can change this to a dynamic state later)
-const ROOM_ID = "main-room";
+// Connect to the backend
 const socket = io.connect("http://localhost:5000");
 
 function App() {
   const [isAuth, setIsAuth] = useState(false);
   const [username, setUsername] = useState("");
-  const [roomID, setRoomID] = useState("");
+  const [roomID, setRoomID] = useState(""); // Captures input from Auth.js
   const [stream, setStream] = useState(null);
   const [micActive, setMicActive] = useState(true);
   const [cameraActive, setCameraActive] = useState(true);
   
   // --- MESH NETWORK STATES ---
-  const [peers, setPeers] = useState([]); // Array of peer objects for rendering
+  const [peers, setPeers] = useState([]); 
   const userVideo = useRef();
-  const peersRef = useRef([]); // Ref to keep track of peers for signaling
+  const peersRef = useRef([]); 
 
   useEffect(() => {
-    if (!isAuth) return;
+    // Only run WebRTC logic if the user has logged in
+    if (!isAuth || !roomID) return;
 
-    // 1. Get Media First
+    // 1. Access Camera and Microphone
     navigator.mediaDevices.getUserMedia({ video: true, audio: true }).then((currentStream) => {
       setStream(currentStream);
       if (userVideo.current) userVideo.current.srcObject = currentStream;
 
-      // 2. Tell Server we are joining
-      socket.emit("join-room", { roomID: ROOM_ID, username });
+      // 2. Join the MariaDB-backed room
+      socket.emit("join-room", { roomID: roomID, username });
 
-      // 3. Receive list of users already in the room
+      // 3. Receive list of users already in the room to start Mesh connections
       socket.on("all-users", (users) => {
         const peers = [];
         users.forEach((userID) => {
@@ -46,20 +46,20 @@ function App() {
         setPeers(peers);
       });
 
-      // 4. Handle a new user joining the room
+      // 4. Handle a new user joining the mesh
       socket.on("user-joined", (payload) => {
         const peer = addPeer(payload.signal, payload.callerID, currentStream);
         peersRef.current.push({ peerID: payload.callerID, peer });
         setPeers((prev) => [...prev, { peerID: payload.callerID, peer }]);
       });
 
-      // 5. Complete the handshake
+      // 5. Complete the 3-way handshake
       socket.on("receiving-returned-signal", (payload) => {
         const item = peersRef.current.find((p) => p.peerID === payload.id);
         if (item) item.peer.signal(payload.signal);
       });
 
-      // 6. Handle user leaving
+      // 6. Handle user leaving and cleanup peer connections
       socket.on("user-left", (id) => {
         const peerObj = peersRef.current.find(p => p.peerID === id);
         if (peerObj) peerObj.peer.destroy();
@@ -69,8 +69,13 @@ function App() {
       });
     });
 
-    return () => socket.off();
-  }, [isAuth]);
+    return () => {
+      socket.off("all-users");
+      socket.off("user-joined");
+      socket.off("receiving-returned-signal");
+      socket.off("user-left");
+    };
+  }, [isAuth, roomID, username]);
 
   // --- MESH HELPER FUNCTIONS ---
 
@@ -91,16 +96,20 @@ function App() {
     return peer;
   }
 
-  // --- CONTROLS ---
+  // --- DEVICE CONTROLS ---
 
   const toggleMic = () => {
-    stream.getAudioTracks()[0].enabled = !micActive;
-    setMicActive(!micActive);
+    if (stream) {
+      stream.getAudioTracks()[0].enabled = !micActive;
+      setMicActive(!micActive);
+    }
   };
 
   const toggleCamera = () => {
-    stream.getVideoTracks()[0].enabled = !cameraActive;
-    setCameraActive(!cameraActive);
+    if (stream) {
+      stream.getVideoTracks()[0].enabled = !cameraActive;
+      setCameraActive(!cameraActive);
+    }
   };
 
   const shareScreen = () => {
@@ -121,7 +130,9 @@ function App() {
 
   const endCall = () => window.location.reload();
 
-  
+  // --- CONDITIONAL RENDERING ---
+
+  // Show Login Screen if not authenticated
   if (!isAuth) {
     return (
       <Auth 
@@ -132,6 +143,7 @@ function App() {
     );
   }
 
+  // Show Main App if authenticated
   return (
     <div className="min-h-screen bg-[#0b0e14] text-slate-200 flex flex-col">
       <nav className="h-16 border-b border-slate-800 flex items-center justify-between px-8 bg-[#0b0e14]/80 backdrop-blur-md z-10">
@@ -139,16 +151,20 @@ function App() {
           <div className="w-8 h-8 bg-indigo-600 rounded-lg flex items-center justify-center font-bold text-white shadow-lg shadow-indigo-500/20">N</div>
           <span className="font-bold tracking-tight">NEXUS <span className="text-indigo-500 text-xs font-black">PRO</span></span>
         </div>
+        <div className="text-xs text-slate-500 font-mono bg-slate-900 px-3 py-1 rounded-full border border-slate-800">
+          ROOM: {roomID}
+        </div>
       </nav>
 
       <main className="flex-1 relative p-6 grid grid-cols-12 gap-6 overflow-y-auto pb-32">
         <div className="col-span-12 lg:col-span-9 flex flex-col gap-6">
           <VideoGrid 
             userVideo={userVideo} 
-            peers={peers} // Passing the array of peers
+            peers={peers} 
             username={username} 
           />
-          <Whiteboard socket={socket} roomId={ROOM_ID} />
+          {/* Passing the dynamic roomID to the whiteboard for MariaDB syncing */}
+          <Whiteboard socket={socket} roomId={roomID} />
         </div>
         <div className="col-span-12 lg:col-span-3">
           <FileShare peers={peers} />
