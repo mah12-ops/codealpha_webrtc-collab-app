@@ -10,6 +10,6 @@ const connection = mysql.createPool({
   database: process.env.DB_NAME,
 });
 
-const db = drizzle(connection, { schema });
+const db = drizzle(connection, { schema , mode: 'default' });
 
 module.exports = { db };
