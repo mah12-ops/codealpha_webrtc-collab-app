@@ -26,7 +26,7 @@ function App() {
   useEffect(() => {
     // Only run WebRTC logic if the user has logged in
     if (!isAuth || !roomID) return;
-
+console.log("Attempting to join room:", roomID); // Add this to debug
     // 1. Access Camera and Microphone
     navigator.mediaDevices.getUserMedia({ video: true, audio: true }).then((currentStream) => {
       setStream(currentStream);
@@ -39,6 +39,7 @@ function App() {
       socket.on("all-users", (users) => {
         const peers = [];
         users.forEach((userID) => {
+          console.log("Users already in room:", users);
           const peer = createPeer(userID, socket.id, currentStream);
           peersRef.current.push({ peerID: userID, peer });
           peers.push({ peerID: userID, peer });
