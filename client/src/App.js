@@ -36,24 +36,53 @@ console.log("Attempting to join room:", roomID); // Add this to debug
       socket.emit("join-room", { roomID: roomID, username });
 
       // 3. Receive list of users already in the room to start Mesh connections
-      socket.on("all-users", (users) => {
-        const peers = [];
-        users.forEach((userID) => {
-          console.log("Users already in room:", users);
-          const peer = createPeer(userID, socket.id, currentStream);
-          peersRef.current.push({ peerID: userID, peer });
-          peers.push({ peerID: userID, peer });
-        });
-        setPeers(peers);
-      });
+      // socket.on("all-users", (users) => {
+      //   const peers = [];
+      //   users.forEach((userID) => {
+      //     console.log("Users already in room:", users);
+      //     const peer = createPeer(userID, socket.id, currentStream);
+      //     peersRef.current.push({ peerID: userID, peer });
+      //     peers.push({ peerID: userID, peer });
+      //   });
+      //   setPeers(peers);
+      // });
 
-      // 4. Handle a new user joining the mesh
-      socket.on("user-joined", (payload) => {
+      // // 4. Handle a new user joining the mesh
+      // socket.on("user-joined", (payload) => {
+      //   const peer = addPeer(payload.signal, payload.callerID, currentStream);
+      //   peersRef.current.push({ peerID: payload.callerID, peer });
+      //   setPeers((prev) => [...prev, { peerID: payload.callerID, peer }]);
+      // });
+// Inside useEffect in App.js
+
+socket.on("all-users", (users) => {
+    const peers = [];
+    users.forEach((userID) => {
+        // Prevent connecting to yourself
+        if (userID === socket.id) return;
+
+        const peer = createPeer(userID, socket.id, currentStream);
+        peersRef.current.push({ peerID: userID, peer });
+        peers.push({ peerID: userID, peer });
+    });
+    setPeers(peers);
+});
+
+socket.on("user-joined", (payload) => {
+    // CRITICAL FIX: Check if this peer already exists in our ref
+    const item = peersRef.current.find(p => p.peerID === payload.callerID);
+    
+    if (!item) {
         const peer = addPeer(payload.signal, payload.callerID, currentStream);
-        peersRef.current.push({ peerID: payload.callerID, peer });
-        setPeers((prev) => [...prev, { peerID: payload.callerID, peer }]);
-      });
+        peersRef.current.push({
+            peerID: payload.callerID,
+            peer,
+        });
 
+        // Only add to state if it's truly a new connection
+        setPeers((prev) => [...prev, { peerID: payload.callerID, peer }]);
+    }
+});
       // 5. Complete the 3-way handshake
       socket.on("receiving-returned-signal", (payload) => {
         const item = peersRef.current.find((p) => p.peerID === payload.id);
