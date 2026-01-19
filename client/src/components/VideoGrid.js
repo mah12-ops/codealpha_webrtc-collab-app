@@ -34,28 +34,27 @@ const PeerVideo = ({ peer }) => {
   const videoRef = useRef();
 
   useEffect(() => {
-    // 1. Helper function to attach the stream to the video element
-    const attachStream = (stream) => {
+    // 1. Define a named function for the listener
+    const handleStream = (stream) => {
+      console.log("Remote stream received and attached.");
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
       }
     };
 
-    // 2. CHECK: If the peer already has a stream attached (fixes the black screen in Tab 1)
+    // 2. Check if the peer already has a stream attached 
+    // (This fixes the black screen for the person who was already in the room)
     if (peer.streams && peer.streams[0]) {
-      console.log("Stream already exists, attaching now...");
-      attachStream(peer.streams[0]);
+      handleStream(peer.streams[0]);
     }
 
-    // 3. LISTEN: For the stream event if it hasn't happened yet
-    peer.on("stream", (stream) => {
-      console.log("New remote stream received!");
-      attachStream(stream);
-    });
+    // 3. Attach the named listener for the 'stream' event
+    peer.on("stream", handleStream);
 
-    // Cleanup listeners when component unmounts
+    // 4. CLEANUP: Properly remove the listener using the function reference
     return () => {
-      peer.off("stream");
+      // removeListener is the safe version of .off() for simple-peer
+      peer.removeListener("stream", handleStream);
     };
   }, [peer]);
 
@@ -65,15 +64,12 @@ const PeerVideo = ({ peer }) => {
         playsInline
         autoPlay
         ref={videoRef}
-        // Use 'muted' if you have audio feedback/screeching during testing.
-        // Browsers allow auto-play more easily if muted is true.
         className="w-full h-full object-cover"
       />
       <div className="absolute bottom-4 left-4 bg-black/60 backdrop-blur-md px-3 py-1 rounded-lg text-xs font-bold border border-white/10 text-white">
         Remote Partner
       </div>
       
-      {/* Small UI indicator to show connection is active */}
       <div className="absolute top-4 right-4 bg-indigo-500/20 px-2 py-1 rounded-md border border-indigo-500/30">
          <span className="text-[9px] text-indigo-400 font-bold uppercase">Connected</span>
       </div>
@@ -81,4 +77,4 @@ const PeerVideo = ({ peer }) => {
   );
 };
 
-export default VideoGrid; 
+export default VideoGrid;
