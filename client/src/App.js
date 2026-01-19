@@ -70,21 +70,27 @@ socket.on("user-joined", (payload) => {
       });
 
       // 6. Handle user leaving and cleanup peer connections
-     socket.on("user-left", (id) => {
+    socket.on("user-left", (id) => {
   console.log("User left, cleaning up ID:", id);
+  
+  // Find the peer in our tracking Ref
   const peerObj = peersRef.current.find(p => p.peerID === id);
   
   if (peerObj && peerObj.peer) {
-    try {
-      peerObj.peer.destroy(); // This is where the 'process' error usually hits
-    } catch (err) {
-      console.error("Error destroying peer:", err);
+    // Only destroy if it hasn't been destroyed yet
+    if (!peerObj.peer.destroyed) {
+      try {
+        peerObj.peer.destroy();
+      } catch (err) {
+        console.warn("Peer cleanup warning (safe to ignore):", err.message);
+      }
     }
   }
 
+  // Remove from state so the video grid updates
   const remainingPeers = peersRef.current.filter(p => p.peerID !== id);
   peersRef.current = remainingPeers;
-  setPeers(remainingPeers);
+  setPeers([...remainingPeers]); // Create a new array to force React to re-render
 });
     });
 
