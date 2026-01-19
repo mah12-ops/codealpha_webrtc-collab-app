@@ -92,20 +92,34 @@ function App() {
 
   function createPeer(userToSignal, callerID, stream) {
     const peer = new Peer({ initiator: true, trickle: false, stream });
+
+    // CRITICAL: Prevent the _readableState crash
+    // We overwrite the internal error handler to catch the stream-state error
+    peer.on("error", (err) => {
+      if (err.message.includes('_readableState')) return; // Ignore this specific error
+      console.error("Peer error:", err);
+    });
+
     peer.on("signal", (signal) => {
       socket.emit("sending-signal", { userToSignal, callerID, signal });
     });
-    // Silence internal stream errors
-    peer.on("error", (err) => console.log("Peer error silenced")); 
+
     return peer;
   }
 
   function addPeer(incomingSignal, callerID, stream) {
     const peer = new Peer({ initiator: false, trickle: false, stream });
+
+    // CRITICAL: Prevent the _readableState crash
+    peer.on("error", (err) => {
+      if (err.message.includes('_readableState')) return;
+      console.error("Peer error:", err);
+    });
+
     peer.on("signal", (signal) => {
       socket.emit("returning-signal", { signal, callerID });
     });
-    peer.on("error", (err) => console.log("Peer error silenced"));
+
     peer.signal(incomingSignal);
     return peer;
   }
