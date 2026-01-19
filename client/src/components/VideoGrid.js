@@ -1,4 +1,6 @@
-const PeerVideo = ({ peer }) => {
+import { useEffect, useRef } from "react";
+
+const VideoGrid = ({ peer }) => {
   const videoRef = useRef();
 
   useEffect(() => {
@@ -40,3 +42,5 @@ const PeerVideo = ({ peer }) => {
     </div>
   );
 };
+
+export default VideoGrid;
