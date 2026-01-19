@@ -69,24 +69,35 @@ function App() {
   }, [isAuth, roomID, username]);
 
   // --- CLEAN DISCONNECT LOGIC ---
-  const handlePeerDisconnect = (id) => {
+ const handlePeerDisconnect = (id) => {
+    console.log("Cleaning up peer:", id);
+    
     const peerObj = peersRef.current.find(p => p.peerID === id);
     
-    // 1. Remove from state immediately to stop React from trying to render the video
+    // 1. Update UI immediately
     setPeers((prev) => prev.filter(p => p.peerID !== id));
-    
-    // 2. Cleanup the Peer object after a tiny delay
+
     if (peerObj && peerObj.peer) {
-      setTimeout(() => {
-        try {
-          // Instead of full destroy, we just remove listeners and stop tracks
-          peerObj.peer.removeAllListeners();
-          if (!peerObj.peer.destroyed) peerObj.peer.destroy();
-        } catch (e) {
-          console.warn("Handled peer cleanup");
+      try {
+        // Stop all tracks associated with this peer specifically
+        if (peerObj.peer.streams) {
+          peerObj.peer.streams.forEach(s => s.getTracks().forEach(t => t.stop()));
         }
-      }, 50);
+        
+        // Remove listeners so it stops trying to "read" data
+        peerObj.peer.removeAllListeners('stream');
+        peerObj.peer.removeAllListeners('data');
+        peerObj.peer.removeAllListeners('signal');
+        
+        // Instead of destroy(), just let it sit or use a safe destroy
+        if (!peerObj.peer.destroyed) {
+            peerObj.peer.destroy();
+        }
+      } catch (e) {
+        console.log("Safe cleanup performed");
+      }
     }
+
     peersRef.current = peersRef.current.filter(p => p.peerID !== id);
   };
 
