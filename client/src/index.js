@@ -1,23 +1,23 @@
 import { Buffer } from 'buffer';
-import React from 'react';
-import ReactDOM from 'react-dom/client';
-import './index.css';
-import App from './App';
-// 1. Define Polyfills FIRST
+
 window.global = window;
 window.Buffer = Buffer;
 window.process = {
   env: { DEBUG: undefined },
   version: '',
   nextTick: (fn) => setTimeout(fn, 0),
+  listeners: () => [],
+  on: () => {},
+  removeListener: () => {}
 };
 
-// 2. NOW import React and your App
-
+// Use require here to ensure process is defined before App components load simple-peer
+const React = require('react');
+const ReactDOM = require('react-dom/client');
+require('./index.css');
+const App = require('./App').default;
 
 const root = ReactDOM.createRoot(document.getElementById('root'));
 root.render(
-  <React.StrictMode>
-    <App />
-  </React.StrictMode>
+  <App />
 );
