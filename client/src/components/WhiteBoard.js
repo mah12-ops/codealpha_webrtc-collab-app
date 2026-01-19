@@ -9,11 +9,21 @@ const Whiteboard = ({ socket, roomId }) => {
     const ctx = canvas.getContext("2d");
 
     // 1. DATABASE LOAD: Receive existing drawing from MariaDB
-    socket.on("load-whiteboard", (dataURL) => {
-      const img = new Image();
-      img.onload = () => ctx.drawImage(img, 0, 0);
-      img.src = dataURL;
-    });
+    
+socket.on("load-whiteboard", (dataURL) => {
+  if (!dataURL) {
+    // If the DB sent an empty string, clear the board
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    return;
+  }
+
+  const img = new Image();
+  img.onload = () => {
+    ctx.clearRect(0, 0, canvas.width, canvas.height); // Clear old pixels first
+    ctx.drawImage(img, 0, 0);
+  };
+  img.src = dataURL;
+});
 
     // 2. REMOTE DRAWING: Receive live strokes from partners
     socket.on("drawing", (data) => {
