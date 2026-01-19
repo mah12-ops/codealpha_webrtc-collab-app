@@ -2,6 +2,7 @@ import { Buffer } from 'buffer';
 
 window.global = window;
 window.Buffer = Buffer;
+window.process = require('process');
 window.process = {
   env: { DEBUG: undefined },
   version: '',
