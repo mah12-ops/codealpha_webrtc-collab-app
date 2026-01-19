@@ -104,19 +104,33 @@ socket.on("user-joined", (payload) => {
 
   // --- MESH HELPER FUNCTIONS ---
 
-  function createPeer(userToSignal, callerID, stream) {
+ function createPeer(userToSignal, callerID, stream) {
     const peer = new Peer({ initiator: true, trickle: false, stream });
+
     peer.on("signal", (signal) => {
       socket.emit("sending-signal", { userToSignal, callerID, signal });
     });
+
+    // ADD THIS: Silence internal stream errors
+    peer.on("error", (err) => {
+      console.warn("Peer connection error handled:", err.message);
+    });
+
     return peer;
   }
 
   function addPeer(incomingSignal, callerID, stream) {
     const peer = new Peer({ initiator: false, trickle: false, stream });
+
     peer.on("signal", (signal) => {
       socket.emit("returning-signal", { signal, callerID });
     });
+
+    // ADD THIS: Silence internal stream errors
+    peer.on("error", (err) => {
+      console.warn("Peer connection error handled:", err.message);
+    });
+
     peer.signal(incomingSignal);
     return peer;
   }
