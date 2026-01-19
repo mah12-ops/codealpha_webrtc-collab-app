@@ -153,12 +153,19 @@ socket.on("user-joined", (payload) => {
     });
   };
 
-  const endCall = () => {
+ const endCall = () => {
   if (stream) {
-    stream.getTracks().forEach(track => track.stop()); // Turn off camera light
+    stream.getTracks().forEach(track => {
+      track.enabled = false; // Disable media
+      track.stop();         // Shut down hardware
+    });
   }
-  socket.disconnect(); // Cleanly tell server we are gone
-  window.location.reload(); 
+  
+  // Give the "stop" signal a few milliseconds to reach the other person
+  setTimeout(() => {
+    socket.disconnect();
+    window.location.reload();
+  }, 100);
 };
 
   // --- CONDITIONAL RENDERING ---
