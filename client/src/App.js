@@ -35,26 +35,6 @@ console.log("Attempting to join room:", roomID); // Add this to debug
       // 2. Join the MariaDB-backed room
       socket.emit("join-room", { roomID: roomID, username });
 
-      // 3. Receive list of users already in the room to start Mesh connections
-      // socket.on("all-users", (users) => {
-      //   const peers = [];
-      //   users.forEach((userID) => {
-      //     console.log("Users already in room:", users);
-      //     const peer = createPeer(userID, socket.id, currentStream);
-      //     peersRef.current.push({ peerID: userID, peer });
-      //     peers.push({ peerID: userID, peer });
-      //   });
-      //   setPeers(peers);
-      // });
-
-      // // 4. Handle a new user joining the mesh
-      // socket.on("user-joined", (payload) => {
-      //   const peer = addPeer(payload.signal, payload.callerID, currentStream);
-      //   peersRef.current.push({ peerID: payload.callerID, peer });
-      //   setPeers((prev) => [...prev, { peerID: payload.callerID, peer }]);
-      // });
-// Inside useEffect in App.js
-
 socket.on("all-users", (users) => {
     const peers = [];
     users.forEach((userID) => {
@@ -158,7 +138,13 @@ socket.on("user-joined", (payload) => {
     });
   };
 
-  const endCall = () => window.location.reload();
+  const endCall = () => {
+  if (stream) {
+    stream.getTracks().forEach(track => track.stop()); // Turn off camera light
+  }
+  socket.disconnect(); // Cleanly tell server we are gone
+  window.location.reload(); 
+};
 
   // --- CONDITIONAL RENDERING ---
 
