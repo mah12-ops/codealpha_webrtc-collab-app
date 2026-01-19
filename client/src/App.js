@@ -7,58 +7,85 @@ import Whiteboard from "./components/WhiteBoard";
 import FileShare from "./components/FileShare";
 import Controls from "./components/Controls";
 
+// Connect to the backend
 const socket = io.connect("http://localhost:5000");
 
 function App() {
   const [isAuth, setIsAuth] = useState(false);
   const [username, setUsername] = useState("");
-  const [roomID, setRoomID] = useState("");
+  const [roomID, setRoomID] = useState(""); 
   const [stream, setStream] = useState(null);
   const [micActive, setMicActive] = useState(true);
   const [cameraActive, setCameraActive] = useState(true);
-  const [peers, setPeers] = useState([]); 
   
+  // --- MESH NETWORK STATES ---
+  const [peers, setPeers] = useState([]); 
   const userVideo = useRef();
   const peersRef = useRef([]); 
 
   useEffect(() => {
+    // Only run WebRTC logic if authenticated
     if (!isAuth || !roomID) return;
 
-    navigator.mediaDevices.getUserMedia({ video: true, audio: true }).then((currentStream) => {
-      setStream(currentStream);
-      if (userVideo.current) userVideo.current.srcObject = currentStream;
+    // 1. Access Camera and Microphone
+    navigator.mediaDevices.getUserMedia({ video: true, audio: true })
+      .then((currentStream) => {
+        setStream(currentStream);
+        if (userVideo.current) userVideo.current.srcObject = currentStream;
 
-      socket.emit("join-room", { roomID, username });
+        // 2. Join the room
+        socket.emit("join-room", { roomID, username });
 
-      socket.on("all-users", (users) => {
-        const peersArr = [];
-        users.forEach((userID) => {
-          if (userID === socket.id) return;
-          const peer = createPeer(userID, socket.id, currentStream);
-          peersRef.current.push({ peerID: userID, peer });
-          peersArr.push({ peerID: userID, peer });
+        // 3. Receive list of existing users
+        socket.on("all-users", (users) => {
+          const peersArr = [];
+          users.forEach((userID) => {
+            if (userID === socket.id) return;
+
+            const peer = createPeer(userID, socket.id, currentStream);
+            peersRef.current.push({ peerID: userID, peer });
+            peersArr.push({ peerID: userID, peer });
+          });
+          setPeers(peersArr);
         });
-        setPeers(peersArr);
-      });
 
-      socket.on("user-joined", (payload) => {
-        const item = peersRef.current.find(p => p.peerID === payload.callerID);
-        if (!item) {
-          const peer = addPeer(payload.signal, payload.callerID, currentStream);
-          peersRef.current.push({ peerID: payload.callerID, peer });
-          setPeers((prev) => [...prev, { peerID: payload.callerID, peer }]);
-        }
-      });
+        // 4. Handle a new user joining
+        socket.on("user-joined", (payload) => {
+          const exists = peersRef.current.find(p => p.peerID === payload.callerID);
+          if (!exists) {
+            const peer = addPeer(payload.signal, payload.callerID, currentStream);
+            peersRef.current.push({ peerID: payload.callerID, peer });
+            setPeers((prev) => [...prev, { peerID: payload.callerID, peer }]);
+          }
+        });
 
-      socket.on("receiving-returned-signal", (payload) => {
-        const item = peersRef.current.find((p) => p.peerID === payload.id);
-        if (item) item.peer.signal(payload.signal);
-      });
+        // 5. Complete the handshake
+        socket.on("receiving-returned-signal", (payload) => {
+          const item = peersRef.current.find((p) => p.peerID === payload.id);
+          if (item) item.peer.signal(payload.signal);
+        });
 
-      socket.on("user-left", (id) => {
-        handlePeerDisconnect(id);
-      });
-    });
+        // 6. Handle user leaving (The Error-Fixing Block)
+        socket.on("user-left", (id) => {
+          console.log("Cleaning up peer who left:", id);
+          const peerObj = peersRef.current.find(p => p.peerID === id);
+          
+          if (peerObj && peerObj.peer) {
+            try {
+              // Destroy the peer connection safely
+              peerObj.peer.destroy();
+            } catch (err) {
+              console.warn("Peer already destroyed or closing...");
+            }
+          }
+
+          // Update local state to remove their video grid
+          const filteredPeers = peersRef.current.filter(p => p.peerID !== id);
+          peersRef.current = filteredPeers;
+          setPeers([...filteredPeers]);
+        });
+      })
+      .catch(err => console.error("Media access error:", err));
 
     return () => {
       socket.off("all-users");
@@ -68,51 +95,19 @@ function App() {
     };
   }, [isAuth, roomID, username]);
 
-  // --- CLEAN DISCONNECT LOGIC ---
- const handlePeerDisconnect = (id) => {
-    console.log("Cleaning up peer:", id);
-    
-    const peerObj = peersRef.current.find(p => p.peerID === id);
-    
-    // 1. Update UI immediately
-    setPeers((prev) => prev.filter(p => p.peerID !== id));
-
-    if (peerObj && peerObj.peer) {
-      try {
-        // Stop all tracks associated with this peer specifically
-        if (peerObj.peer.streams) {
-          peerObj.peer.streams.forEach(s => s.getTracks().forEach(t => t.stop()));
-        }
-        
-        // Remove listeners so it stops trying to "read" data
-        peerObj.peer.removeAllListeners('stream');
-        peerObj.peer.removeAllListeners('data');
-        peerObj.peer.removeAllListeners('signal');
-        
-        // Instead of destroy(), just let it sit or use a safe destroy
-        if (!peerObj.peer.destroyed) {
-            peerObj.peer.destroy();
-        }
-      } catch (e) {
-        console.log("Safe cleanup performed");
-      }
-    }
-
-    peersRef.current = peersRef.current.filter(p => p.peerID !== id);
-  };
+  // --- MESH HELPER FUNCTIONS ---
 
   function createPeer(userToSignal, callerID, stream) {
     const peer = new Peer({ initiator: true, trickle: false, stream });
 
-    // CRITICAL: Prevent the _readableState crash
-    // We overwrite the internal error handler to catch the stream-state error
-    peer.on("error", (err) => {
-      if (err.message.includes('_readableState')) return; // Ignore this specific error
-      console.error("Peer error:", err);
-    });
-
     peer.on("signal", (signal) => {
       socket.emit("sending-signal", { userToSignal, callerID, signal });
+    });
+
+    // SILENCE internal _readableState errors
+    peer.on("error", (err) => {
+      if (err.message.includes('_readableState')) return;
+      console.error("Peer Error:", err);
     });
 
     return peer;
@@ -121,29 +116,22 @@ function App() {
   function addPeer(incomingSignal, callerID, stream) {
     const peer = new Peer({ initiator: false, trickle: false, stream });
 
-    // CRITICAL: Prevent the _readableState crash
-    peer.on("error", (err) => {
-      if (err.message.includes('_readableState')) return;
-      console.error("Peer error:", err);
-    });
-
     peer.on("signal", (signal) => {
       socket.emit("returning-signal", { signal, callerID });
+    });
+
+    // SILENCE internal _readableState errors
+    peer.on("error", (err) => {
+      if (err.message.includes('_readableState')) return;
+      console.error("Peer Error:", err);
     });
 
     peer.signal(incomingSignal);
     return peer;
   }
 
-  const endCall = () => {
-    if (stream) {
-      stream.getTracks().forEach(track => track.stop());
-    }
-    socket.disconnect();
-    window.location.reload(); 
-  };
+  // --- DEVICE CONTROLS ---
 
-  // Rest of your device control functions (toggleMic, etc.) stay the same...
   const toggleMic = () => {
     if (stream) {
       stream.getAudioTracks()[0].enabled = !micActive;
@@ -161,20 +149,52 @@ function App() {
   const shareScreen = () => {
     navigator.mediaDevices.getDisplayMedia({ cursor: true }).then((screenStream) => {
       const screenTrack = screenStream.getTracks()[0];
+      
+      // Replace video track for all connected peers
       peersRef.current.forEach(({ peer }) => {
-        peer.replaceTrack(stream.getVideoTracks()[0], screenTrack, stream);
+        peer.replaceTrack(
+          stream.getVideoTracks()[0], 
+          screenTrack, 
+          stream
+        );
       });
+
+      // Update local preview
       userVideo.current.srcObject = screenStream;
+
+      // Handle when user clicks "Stop Sharing" in browser UI
       screenTrack.onended = () => {
         peersRef.current.forEach(({ peer }) => {
-          peer.replaceTrack(screenTrack, stream.getVideoTracks()[0], stream);
+          peer.replaceTrack(
+            screenTrack, 
+            stream.getVideoTracks()[0], 
+            stream
+          );
         });
         userVideo.current.srcObject = stream;
       };
     });
   };
 
-  if (!isAuth) return <Auth setUsername={setUsername} setRoomID={setRoomID} setIsAuth={setIsAuth} />;
+  const endCall = () => {
+    if (stream) {
+      stream.getTracks().forEach(track => track.stop());
+    }
+    socket.disconnect();
+    window.location.reload(); 
+  };
+
+  // --- RENDERING ---
+
+  if (!isAuth) {
+    return (
+      <Auth 
+        setUsername={setUsername} 
+        setRoomID={setRoomID} 
+        setIsAuth={setIsAuth} 
+      />
+    );
+  }
 
   return (
     <div className="min-h-screen bg-[#0b0e14] text-slate-200 flex flex-col">
@@ -184,13 +204,17 @@ function App() {
           <span className="font-bold tracking-tight">NEXUS <span className="text-indigo-500 text-xs font-black">PRO</span></span>
         </div>
         <div className="text-xs text-slate-500 font-mono bg-slate-900 px-3 py-1 rounded-full border border-slate-800 uppercase">
-          Room: {roomID}
+          ROOM: {roomID}
         </div>
       </nav>
 
       <main className="flex-1 relative p-6 grid grid-cols-12 gap-6 overflow-y-auto pb-32">
         <div className="col-span-12 lg:col-span-9 flex flex-col gap-6">
-          <VideoGrid userVideo={userVideo} peers={peers} username={username} />
+          <VideoGrid 
+            userVideo={userVideo} 
+            peers={peers} 
+            username={username} 
+          />
           <Whiteboard socket={socket} roomId={roomID} />
         </div>
         <div className="col-span-12 lg:col-span-3">
@@ -198,7 +222,14 @@ function App() {
         </div>
       </main>
 
-      <Controls micActive={micActive} cameraActive={cameraActive} toggleMic={toggleMic} toggleCamera={toggleCamera} shareScreen={shareScreen} endCall={endCall} />
+      <Controls 
+        micActive={micActive} 
+        cameraActive={cameraActive} 
+        toggleMic={toggleMic} 
+        toggleCamera={toggleCamera} 
+        shareScreen={shareScreen} 
+        endCall={endCall} 
+      />
     </div>
   );
 }
