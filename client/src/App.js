@@ -33,10 +33,7 @@ function App() {
         setStream(currentStream);
         if (userVideo.current) userVideo.current.srcObject = currentStream;
 
-        // 2. Join the room
-        socket.emit("join-room", { roomID, username });
-
-        // 3. Receive list of existing users
+        // 2. Attach listeners before joining so we don't miss server responses
         socket.on("all-users", (users) => {
           const peersArr = [];
           users.forEach((userID) => {
@@ -49,7 +46,7 @@ function App() {
           setPeers(peersArr);
         });
 
-        // 4. Handle a new user joining
+        // 3. Handle a new user joining
         socket.on("user-joined", (payload) => {
           const exists = peersRef.current.find(p => p.peerID === payload.callerID);
           if (!exists) {
@@ -58,6 +55,9 @@ function App() {
             setPeers((prev) => [...prev, { peerID: payload.callerID, peer }]);
           }
         });
+
+        // 4. Join the room after listeners are registered
+        socket.emit("join-room", { roomID, username });
 
         // 5. Complete the handshake
         socket.on("receiving-returned-signal", (payload) => {
